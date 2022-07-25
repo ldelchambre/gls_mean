@@ -1,0 +1,228 @@
+-- Function File: function [m, chi2r, C, iter, a, Wm] = gls_mean(X, W=[], M=[], P=[], m0=[], ival=[], opts=[])
+-- Function File: function opts = gls_mean("options")
+
+ Compute the generalized least squares mean of a set of N observation vectors 
+of size Nx that are contained in X = [ X(1), ..., X(N) ].
+  
+ The generalized least squares mean is defined as the vector m of size Nm that 
+minimizes the reduced chi-square defined by
+
+            N
+          -----
+          \                               2
+  chi2r = /     | W(i) * [ X(i) - Y(i) ] |  / dof                          (1)
+          -----
+          i = 1
+
+where dof is the degree of freedom of the problem. Each observation is 
+modelled as a linear combination of m and of a user-defined matrix P of size 
+( Nm * Np ) with respective linear coefficients s(i) and f(i):
+
+  Y(i) = M(i) * [ P * f(i) + m * s(i) ].                                   (2)
+
+M(i) is a transformation matrix of size ( Nx * Nm ) which projects m and P in 
+the space of X(i). W(i) is a weight matrix of size ( Nw * Nx ) that is 
+associated with the observation X(i). W(i) is the pseudo-inverse of 
+symmetrical decomposition, L(i), of the covariance matrix associated with 
+X(i), Cx(i) = L(i) * L(i)', where L(i) has a size of ( Nx * Nw ) with 
+Nw <= Nx. If Nx=Nw, then W(i) can be computed as the inverse of the Cholesky 
+decomposition of Cx(i). In Equation 2, m, s(i) and f(i) are free to 
+vary. However, we can compute the values of s(i) and f(i) that minimize 
+Equation 1 for a given value of m such that it actually only depends on m.
+
+  The input set of observations, X, is split by this function into a training 
+set of observations, whose indices are not contained in ival, and a validation 
+set of observations whose indices are contained in ival. Equation 1 is then 
+evaluated on both the training set and validation set of observations 
+independently, although m is only inferred based on the training set of 
+observations. Convergence can be probed using the chi2r evaluated on the 
+validation set of observations using the early_stop option.
+
+  The likelihood associated with Equation 1 is maximized through an iterative 
+Expectation-Maximization algorithm, hence converging to the nearest local 
+minimum of the chi-square function. In order to mitigate the problem of local
+convergence, one can use a subset of the training set of observation at each 
+iteration of the algorithm by setting the fbatch option to a value lower than 
+one. Complementarily, one can also use momentum by setting the beta option to 
+a value different than zero. If available, an initial estimate of the 
+generalized least squares mean can also be provided through the m0 parameter.
+
+The algorithm stops when any of the following criteria are met
+  - chi2r_best - chi2r < chi2tol for more than n_no_improve iterations where
+    chi2r_best is the best chi2r encountered so far. That is: the improvement
+    in the reduced chi-square is lower than chi2tol for n_no_improve 
+    successive iterations.
+  - The relative change in the mean vector falls under a given threshold, 
+    rtol.
+  - A maximum number of iterations is reached, maxiter
+
+  The value of m associated with the minimal chi2r is then returned along with 
+the final value of this reduced chi-square, the covariance matrix on m, the 
+final number of observations that were performed, the linear coefficients 
+associated with P and m for each observation and a weight matrix on m.
+
+Input:  
+------  
+      X: The matrix of observations, size of ( Nx * N ).
+      W: The weights matrices associated with the observations, size of 
+         ( Nw * Nx * N ), or ( Nx * N ) if columns of W are the inverse 
+         (uncorrelated) standard deviations on X. 
+         If empty, unit weights are considered.
+      M: Transformation matrices allowing to project m and P in the space of 
+         X. Size of (Nx * Nm * N) if each observation is associated with its
+         own transformation matrix or size of (Nx * Nm) in order to use a 
+         global transformation matrix.
+         If empty, M is taken as the identity matrix of size (Nx * Nx).
+      P: The set of fixed templates to use in order to fit the background 
+         signal, size of ( Nm * Np ).
+         If empty, P will not be used.
+     m0: The column vector containing an initial estimate of m, size of Nm. 
+         If empty, m0 is computed from the the observation having the highest
+         signal-to-noise ratio.
+   ival: Indices of the set of validation observations. Should be a vector 
+         containing indices in [1, N].
+   opts: Structure containing the options to pass to the algorithm.
+         This structure contains
+           maxiter: The maximum number of iteration to perform.
+           chi2tol: The tolerance in the change of the reduced chi-square 
+                    value. Reduced chi-square is evaluated on either the
+                    training set of observations or on the validation set of
+                    observations, depending on the value of the early_stop
+                    option.
+      n_no_improve: Stop if the reduced chi-square is higher than 
+                    chi2r_best - chi2tol for more than n_no_improve 
+                    iterations where chi2r_best is the best chi2r encountered 
+                    so far.
+              rtol: The tolerance in the relative change of the mean vector.
+                    The algorithm stops if rtolf(p,dp,rtol) <= rtol. See rtolf
+                    for more details.
+             rtolf: The function used to compute the tolerance in the relative 
+                    change of parameters. 
+                      rtolf = @(m, dm, rtol) where m are the current mean, dm 
+                    the last change in the mean and rtol is described above.
+            fbatch: The fraction of training observations used in batch 
+                    optimization, i.e. only a random subset of observations 
+                    will be used while fitting m in each iteration of the 
+                    Expectation-Maximization algorithm. Values in 
+                    0 < fbatch <= 1.
+              beta: Decay factor used in the computation of the momentum of m.
+                    Each update brought to m will be of the form
+                      mv(i) = beta * mv(i-1) + (1 - beta) * dm
+                      m = m + mv(i)
+                    where dm is the change in m from a least squares solution
+                    to Equation 1. Values in 0 <= beta < 1, where beta=0 
+                    implies no use of momentum.
+        early_stop: If set to 1, use the validation set of observations 
+                    instead of the training set of observation in order to 
+                    compute chi2r from Equation 1. Values in [0, 1].
+    move2best_only: Should we move to a new solution only if it is better than 
+                    the best encountered so far? If not, restart from the best
+                    solution, without momentum. Values in [0, 1].
+           verbose: Should we have to be verbose? Values in [0, 1].
+            lambda: Thikonov regularization factor of the 
+                    Expectation-minimization algorithm. Chi-square 
+                    minimizations of m in the Expectation-minimization 
+                    algorithm will be of the form
+                      chi2 = | A * m - y |^2 + lambda * | L * m |^2
+                    where L = max(sqrt(diag(A'*A))), according to 
+                    Levenberg (1944). Setting lambda to a non-zero value 
+                    provides a numerically more stable convergence at the 
+                    expense of being slower. Values in lambda >= 0.
+        lambda_cov: The Thikonov regularization factor used in order to 
+                    compute the covariance matrix in case it is close to 
+                    singular. Given the Jacobian matrix on m, J, the 
+                    covariance matrix is computed as 
+                      C = iJ * iJ' 
+                    where iJ = inv( J' * J + lambda_cov * L ) * J' and 
+                    L = diag(sqrt(J'*J)) in accordance with Marquardt (1963).
+                    Set this parameter to a large value (e.g. usually 0.001) 
+                    if you expect/notice that the problem is close to be 
+                    singular or that the errors seem unrealistic. Values in 
+                    lambda_cov >= 0.
+             lsqrf: The function to call for solving the least squares
+                    problems | y - A * x |^2  + lambda * | L * x |^2 where
+                    L is a user-defined regularization matrix and lambda is
+                    the previously defined options. lsqrf must be of the form
+                    x = lsqrf(A, y, lambda). If empty, lsqrf will be taken as
+                    an internal function based on conjugate gradient descent.
+              seed: The random seed to use for selecting batch observations.
+
+Output:
+-------
+    m: The mean vector minimizing Equation 1, size of Nm. Note that
+       m will have a norm of one and is explicitly made orthogonal to P.
+chi2r: The reduced chi-square computed on either the training set of 
+       observations or on the validation set of observations, depending on the
+       value of the early_stop option.
+    C: An asymptotic estimation of the covariance on the mean vector, size of
+       ( Nm * Nm ).
+ iter: The number of iterations that were performed.
+    a: The least squares linear coefficients associated with [P m], size of 
+       ( Np+1 * N ), I.e. a(:,i) = [f(i); s(i)].
+   Wm: The weight matrix associated with m, such that Wm'*Wm = inv(C).
+       Wm aims to be used in generalized least
+       square problems of the form | A * x - m |^2 whose solution are given by
+       x = inv( A' * inv(C) * A ) * A' * inv(C) * m
+         = inv( A' * Wm' * Wm * A ) * A' * Wm' * Wm * m.
+
+Prerequisites
+-------------
+  gls_mean run on GNU Octave 4.2.2+ <https://www.gnu.org/software/octave/>. 
+
+  File gls_mean.m should either be in the current working directory or in the 
+Octave's function search path (see the Octave addpath function for more 
+information on how to add search paths). 
+
+Demo
+----
+  A demonstration script can be run by typing "demo gls_mean" at the Octave
+prompt.
+
+License
+-------
+  This program is free software: you can redistribute it and/or modify it 
+under the terms of the GNU General Public License as published by the Free 
+Software Foundation, in version 3 of the License.
+
+  This program is distributed in the hope that it will be useful, but WITHOUT 
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS 
+FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License along with 
+this program. If not, see <https://www.gnu.org/licenses/>
+
+Version:
+--------
+  0.7.0
+
+History:
+--------
+  0.7.0 2022-06-01 Degree of freedom increased by 1 in order to take into 
+                   account the fact that the mean vector is normalized.
+  0.6.0 2022-03-31 Fix error in the computation of the signal-to-noise ratio
+                   Documentation update after review by C.A.L Bailer-Jones
+  0.5.0 2022-03-29 Fix minor convergence issues
+                   Add warning messages and debug facilities
+                   Exhaustive tests
+  0.4.0 2022-03-16 Add the lsqrf option
+  0.3.0 2022-03-15 Rewrite of the gls_mean_lsqrf function
+                   Removal of the lsqrSOL.m dependency
+  0.2.0 2022-03-11 Add validation set of observations
+                   Add n_no_improve, early_stop and seed options
+                   Documentation rewriting
+  0.1.0 2021-11-22 Initial functional version, used to compute the preliminary 
+                   quasar composite spectra in the first submitted version of
+                   Gaia collaboration, C.A.L Bailer-Jones et al. (2022) 
+  0.0.0 2021-08-27 Proof of concept/beta version called fitMean
+
+Bugs
+----
+ Please report any bugs to <ldelchambre@uliege.be>.
+
+Reference
+---------
+  Gaia collaboration et al., 2022, A&A, ???, ???
+
+Acknowledgements
+----------------
+ C.A.L Bailer-Jones for reviewing this documentation.
