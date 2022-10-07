@@ -193,10 +193,13 @@
 %
 % Version:
 % --------
-%   0.7.0
+%   0.7.1
 %
 % History:
 % --------
+%   0.7.1 2022-09-29 Added a progress report while searching for the highest SNR
+%                    observation, optimisation of the SNR computation in the 
+%                    case of uncorrelated noise.
 %   0.7.0 2022-06-01 Degree of freedom increased by 1 in order to take into 
 %                    account the fact that the mean vector is normalized.
 %   0.6.0 2022-03-31 Fix error in the computation of the signal-to-noise ratio
@@ -221,7 +224,10 @@
 %
 % Reference
 % ---------
-%   Gaia collaboration et al., 2022, A&A, ???, ???
+%   Gaia collaboration et al., 2022, A&A, Gaia Data Release 3. The extragalactic 
+%     content 
+%   DOI: https://doi.org/10.1051/0004-6361/202243232
+%   arXiv: 2206.05681
 %
 % Acknowledgements
 % ----------------
@@ -350,19 +356,30 @@ function [m, chi2r, C, iter, a, Wm] = gls_mean(X, W=[], M=[], P=[], m0=[], ival=
   # Initialize m0 if it is empty
   if(isempty(m0))
     # Get the training observation having the highest SNR as initial guess
-    best_snr2 = -Inf; ibest = 0;
+    best_snr2 = -Inf; ibest = 0; tid = tic(); t = 0;
     for i=itrain'
       Xi = X(:,i);
-      Wi = gls_mean_getW(W,i);
-      ig = ( sumsq(Wi,1) > 0 );
-      di = svd(Wi(:,ig));
-      snr2 = sumsq( Xi(ig) ) / sumsq( 1 ./ di(di > max(size(Wi)) * eps * di(1)) ) - 1;
+      if(numel(size(W)) == 2)
+        Wi = W(:,i);
+        ig = ( Wi != 0 );
+        snr2 = sumsq( Xi(ig) ) / sumsq( 1 ./ Wi(ig) ) - 1;
+      else
+        Wi = W(:,:,i);
+        ig = ( sumsq(Wi,1) > 0 );
+        di = svd(Wi(:,ig));
+        snr2 = sumsq( Xi(ig) ) / sumsq( 1 ./ di(di > max(size(Wi)) * eps * di(1)) ) - 1;
+      end
       if(snr2 > best_snr2)
         best_snr2 = snr2;
         ibest = i;
       end
+      t = toc(tid);
+      if(opts.verbose != 0 && t > 15)
+        printf("\rSearching for the highest SNR observation... %.3f%% done (obs: %d, snr: %9.3e)", 100*i/ntrain, ibest, sqrt(best_snr2));
+      end
     end
     if(opts.verbose != 0)
+      if(t > 15) printf("\n"); end
       printf("Selecting observation %d as initial guess (snr: %g)\n", ibest, sqrt(best_snr2));
     end
     Xi = X(:,ibest);
