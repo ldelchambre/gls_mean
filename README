@@ -193,10 +193,13 @@ this program. If not, see <https://www.gnu.org/licenses/>
 
 Version:
 --------
-  0.7.0
+  0.7.1
 
 History:
 --------
+  0.7.1 2022-09-29 Added a progress report while searching for the highest SNR
+                   observation, optimisation of the SNR computation in the 
+                   case of uncorrelated noise.
   0.7.0 2022-06-01 Degree of freedom increased by 1 in order to take into 
                    account the fact that the mean vector is normalized.
   0.6.0 2022-03-31 Fix error in the computation of the signal-to-noise ratio
@@ -221,7 +224,10 @@ Bugs
 
 Reference
 ---------
-  Gaia collaboration et al., 2022, A&A, ???, ???
+  Gaia collaboration et al., 2022, A&A, Gaia Data Release 3. The extragalactic 
+    content 
+  DOI: https://doi.org/10.1051/0004-6361/202243232
+  arXiv: 2206.05681
 
 Acknowledgements
 ----------------
